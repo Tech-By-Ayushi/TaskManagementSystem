@@ -1,0 +1,18 @@
+﻿@page "/profile"
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Admin")]
+
+<MudText Typo="Typo.h3" GutterBottom="true">Admin Profile</MudText>
+
+<AuthorizeView Roles="Admin">
+    <Authorized>
+        <MudText Typo="Typo.h4">Hello, @context.User.Identity?.Name</MudText>
+        <MudText Class="mt-4">Welcome to the secure admin profile page.</MudText>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Error">
+            You do not have permission to view this page. Access is restricted to administrators.
+        </MudAlert>
+    </NotAuthorized>
+</AuthorizeView>

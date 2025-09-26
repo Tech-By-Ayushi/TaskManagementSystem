@@ -1,0 +1,70 @@
+﻿@page "/add-task"
+@using Microsoft.AspNetCore.Authorization
+@using Task.Client.Services
+@using Task.Shared
+@attribute [Authorize(Roles = "Admin")]
+@inject TaskService TaskService
+@inject UserService UserService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Add New Task</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Add New Task</MudText>
+
+@if (_users == null)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudPaper Class="pa-4 mt-4">
+        <EditForm Model="@_task" OnValidSubmit="HandleAddTask">
+            <DataAnnotationsValidator />
+
+            <MudSelect T="string" @bind-Value="_task.AssignedToUserId" For="@(() => _task.AssignedToUserId)" Label="Assign to User" Variant="Variant.Outlined">
+                @foreach (var user in _users)
+                {
+                    <MudSelectItem Value="@user.Id">@user.Email</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudTextField @bind-Value="_task.Title" For="@(() => _task.Title)" Label="Title" Variant="Variant.Outlined" Class="mt-3" />
+            <MudTextField @bind-Value="_task.Description" For="@(() => _task.Description)" Label="Description" Variant="Variant.Outlined" Lines="3" Class="mt-3" />
+            <MudDatePicker @bind-Date="_task.DueDate" Label="Due Date" Variant="Variant.Outlined" Class="mt-3" />
+
+            <div class="d-flex justify-end mt-4">
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Create Task</MudButton>
+            </div>
+        </EditForm>
+    </MudPaper>
+}
+
+
+@code {
+    private List<UserDto>? _users;
+
+    private readonly TaskItemDto _task = new()
+    {
+        DueDate = DateTime.Now.AddDays(7)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _users = await UserService.GetUsersAsync();
+    }
+
+    private async Task HandleAddTask()
+    {
+        try
+        {
+            await TaskService.AddTaskAsync(_task);
+            Snackbar.Add("Task created successfully!", Severity.Success);
+            NavigationManager.NavigateTo("/tasks");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating task: {ex.Message}", Severity.Error);
+        }
+    }
+}

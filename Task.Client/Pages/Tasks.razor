@@ -1,0 +1,114 @@
+﻿@page "/tasks"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Task.Client.Services
+@using Task.Shared
+@inject TaskService TaskService
+@inject ISnackbar Snackbar
+
+<PageTitle>Tasks Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Tasks Dashboard</MudText>
+
+<AuthorizeView Roles="Admin">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/add-task" Class="mb-4">Add New Task</MudButton>
+</AuthorizeView>
+
+@if (_tasks == null)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudTable T="TaskItemDto" Items="_tasks" Hover="true" Breakpoint="Breakpoint.Sm">
+        <HeaderContent>
+            <MudTh>Title</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Assigned To</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Due Date</MudTh>
+            <AuthorizeView Roles="Admin">
+                <MudTh>Actions</MudTh>
+            </AuthorizeView>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Title">@context.Title</MudTd>
+            <MudTd DataLabel="Description">@context.Description</MudTd>
+            <MudTd DataLabel="Assigned To">@context.CreatedByEmail</MudTd>
+            <MudTd DataLabel="Status">
+                <MudSelect T="Shared.TaskStatus" Value="context.Status" ValueChanged="(s) => OnStatusChanged(context, s)">
+                    @foreach (Shared.TaskStatus status in Enum.GetValues(typeof(Shared.TaskStatus)))
+                    {
+                        <MudSelectItem Value="status">@status.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudTd>
+            <MudTd DataLabel="Due Date">@context.DueDate?.ToShortDateString()</MudTd>
+            <AuthorizeView Roles="Admin" Context="authContext">
+                <MudTd DataLabel="Actions">
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                        <MudMenuItem Href="@($"edit-task/{context.Id}")">Edit</MudMenuItem>
+                        <MudMenuItem OnClick="() => DeleteTask(context.Id)" Disabled="@_deletingTasks.Contains(context.Id)">Delete</MudMenuItem>
+                    </MudMenu>
+                </MudTd>
+            </AuthorizeView>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    private List<TaskItemDto>? _tasks;
+    private HashSet<Guid> _deletingTasks = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasks();
+    }
+
+    private async Task LoadTasks()
+    {
+        _tasks = await TaskService.GetTasksAsync();
+    }
+
+    private async Task OnStatusChanged(TaskItemDto task, Shared.TaskStatus newStatus)
+    {
+        try
+        {
+            await TaskService.UpdateTaskStatusAsync(task.Id, newStatus);
+            task.Status = newStatus;
+            Snackbar.Add("Status updated successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating status: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteTask(Guid taskId)
+    {
+        _deletingTasks.Add(taskId);
+
+        try
+        {
+            await TaskService.DeleteTaskAsync(taskId);
+            var taskToRemove = _tasks?.FirstOrDefault(t => t.Id == taskId);
+            if (taskToRemove != null)
+            {
+                _tasks.Remove(taskToRemove);
+            }
+            Snackbar.Add("Task deleted successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting task: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _deletingTasks.Remove(taskId);
+            StateHasChanged();
+        }
+    }
+}

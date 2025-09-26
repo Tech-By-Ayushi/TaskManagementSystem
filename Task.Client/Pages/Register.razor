@@ -1,0 +1,39 @@
+﻿@page "/register"
+@using Task.Client.Services
+@using Task.Shared
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<MudGrid Justify="Justify.Center" Class="mt-16">
+    <MudItem xs="12" sm="8" md="4">
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h5" GutterBottom="true">Register</MudText>
+            <EditForm Model="@_registerRequest" OnValidSubmit="HandleRegistration">
+                <DataAnnotationsValidator />
+                <MudTextField T="string" Label="Email" @bind-Value="_registerRequest.Email" For="@(() => _registerRequest.Email)" Variant="Variant.Outlined" />
+                <MudTextField T="string" Label="Password" @bind-Value="_registerRequest.Password" For="@(() => _registerRequest.Password)" InputType="InputType.Password" Variant="Variant.Outlined" Class="mt-4" />
+                <MudTextField T="string" Label="Confirm Password" @bind-Value="_registerRequest.ConfirmPassword" For="@(() => _registerRequest.ConfirmPassword)" InputType="InputType.Password" Variant="Variant.Outlined" Class="mt-4" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" FullWidth="true">Register</MudButton>
+            </EditForm>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private readonly RegisterRequest _registerRequest = new();
+
+    private async Task HandleRegistration()
+    {
+        var result = await AuthService.RegisterAsync(_registerRequest);
+        if (result)
+        {
+            Snackbar.Add("Registration successful!", Severity.Success);
+            NavigationManager.NavigateTo("/login");
+        }
+        else
+        {
+            Snackbar.Add("Registration failed.", Severity.Error);
+        }
+    }
+}

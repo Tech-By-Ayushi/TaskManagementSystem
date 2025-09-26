@@ -1,0 +1,63 @@
+﻿@page "/edit-task/{TaskId:guid}"
+@using Microsoft.AspNetCore.Authorization
+@using Task.Client.Services
+@using Task.Shared
+@attribute [Authorize(Roles = "Admin")]
+@inject TaskService TaskService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Edit Task</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Edit Task</MudText>
+
+@if (_task == null)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudPaper Class="pa-4 mt-4">
+        <EditForm Model="@_task" OnValidSubmit="HandleUpdateTask">
+            <DataAnnotationsValidator />
+
+            <MudTextField @bind-Value="_task.Title" For="@(() => _task.Title)" Label="Title" Variant="Variant.Outlined" Class="mt-3" />
+            <MudTextField @bind-Value="_task.Description" For="@(() => _task.Description)" Label="Description" Variant="Variant.Outlined" Lines="3" Class="mt-3" />
+            <MudDatePicker @bind-Date="_task.DueDate" Label="Due Date" Variant="Variant.Outlined" Class="mt-3" />
+
+            <div class="d-flex justify-end mt-4">
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Save Changes</MudButton>
+            </div>
+        </EditForm>
+    </MudPaper>
+}
+
+
+@code {
+    [Parameter]
+    public Guid TaskId { get; set; }
+
+    private TaskItemDto? _task;
+
+    protected override async Task OnInitializedAsync()
+    {
+        
+        _task = await TaskService.GetTaskByIdAsync(TaskId);
+    }
+
+    private async Task HandleUpdateTask()
+    {
+        if (_task == null) return;
+
+        try
+        {
+            await TaskService.UpdateTaskAsync(TaskId, _task);
+            Snackbar.Add("Task updated successfully!", Severity.Success);
+            NavigationManager.NavigateTo("/tasks");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating task: {ex.Message}", Severity.Error);
+        }
+    }
+}

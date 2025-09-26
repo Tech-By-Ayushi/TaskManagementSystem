@@ -1,0 +1,37 @@
+﻿@page "/login"
+@using Task.Client.Services
+@using Task.Shared
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<MudGrid Justify="Justify.Center" Class="mt-16">
+    <MudItem xs="12" sm="8" md="4">
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h5" GutterBottom="true">Login</MudText>
+            <EditForm Model="@_loginRequest" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+                <MudTextField T="string" Label="Email" @bind-Value="_loginRequest.Email" For="@(() => _loginRequest.Email)" Variant="Variant.Outlined" />
+                <MudTextField T="string" Label="Password" @bind-Value="_loginRequest.Password" For="@(() => _loginRequest.Password)" InputType="InputType.Password" Variant="Variant.Outlined" Class="mt-4" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" FullWidth="true">Login</MudButton>
+            </EditForm>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private readonly LoginRequest _loginRequest = new();
+
+    private async Task HandleLogin()
+    {
+        var result = await AuthService.LoginAsync(_loginRequest);
+        if (result.Success)
+        {
+            NavigationManager.NavigateTo("/");
+        }
+        else
+        {
+            Snackbar.Add(result.Message, Severity.Error);
+        }
+    }
+}
