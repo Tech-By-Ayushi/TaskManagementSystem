@@ -3,7 +3,6 @@ using System.Security.Claims;
 using System.Text.Json;
 using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.Authorization;
-using System.Threading.Tasks;
 
 namespace Task.Client.Auth;
 
@@ -21,39 +20,19 @@ public class JwtAuthenticationStateProvider : AuthenticationStateProvider
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        try
+        var token = await _localStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrWhiteSpace(token))
         {
-            Console.WriteLine("GetAuthenticationStateAsync start");
-
-            var token = await _localStorage.GetItemAsync<string>("authToken");
-            Console.WriteLine($"Token: {token ?? "null"}");
-
-            if (string.IsNullOrWhiteSpace(token))
-                return new AuthenticationState(_anonymous);
-
-            var identity = new ClaimsIdentity(ParseClaimsFromJwt(token), "jwtAuth", nameType: "email", roleType: "role");
-
-            var user = new ClaimsPrincipal(identity);
-
-            if (_httpClient.DefaultRequestHeaders.Authorization == null)
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-            return new AuthenticationState(user);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"GetAuthenticationStateAsync failed: {ex.Message}");
             return new AuthenticationState(_anonymous);
         }
+        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", token);
+        var claimsIdentity = new ClaimsIdentity(ParseClaimsFromJwt(token), "jwtAuth", nameType: "email", roleType: ClaimTypes.Role);
+        return new AuthenticationState(new ClaimsPrincipal(claimsIdentity));
     }
-
-
-
-
 
     public void NotifyUserAuthentication(string token)
     {
-        var claimsIdentity = new ClaimsIdentity(ParseClaimsFromJwt(token), "jwtAuth", nameType: "email", roleType: "role");
+        var claimsIdentity = new ClaimsIdentity(ParseClaimsFromJwt(token), "jwtAuth", nameType: "email", roleType: ClaimTypes.Role);
         var authenticatedUser = new ClaimsPrincipal(claimsIdentity);
         var authState = System.Threading.Tasks.Task.FromResult(new AuthenticationState(authenticatedUser));
         NotifyAuthenticationStateChanged(authState);
@@ -74,16 +53,13 @@ public class JwtAuthenticationStateProvider : AuthenticationStateProvider
 
         if (keyValuePairs != null)
         {
-            keyValuePairs.TryGetValue(ClaimTypes.Role, out object? roles);
-
-            if (roles != null)
+            if (keyValuePairs.TryGetValue(ClaimTypes.Role, out object? roles))
             {
-                if (roles.ToString()!.Trim().StartsWith("["))
+                if (roles is JsonElement { ValueKind: JsonValueKind.Array } rolesElement)
                 {
-                    var parsedRoles = JsonSerializer.Deserialize<string[]>(roles.ToString()!);
-                    if (parsedRoles != null)
+                    foreach (var role in rolesElement.EnumerateArray())
                     {
-                        claims.AddRange(parsedRoles.Select(role => new Claim(ClaimTypes.Role, role)));
+                        claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
                     }
                 }
                 else
@@ -92,7 +68,6 @@ public class JwtAuthenticationStateProvider : AuthenticationStateProvider
                 }
                 keyValuePairs.Remove(ClaimTypes.Role);
             }
-
             claims.AddRange(keyValuePairs.Select(kvp => new Claim(kvp.Key, kvp.Value.ToString()!)));
         }
         return claims;

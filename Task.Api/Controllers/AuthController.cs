@@ -11,44 +11,34 @@ namespace Task.Api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-     
     public class AuthController : ControllerBase
     {
         private readonly UserManager<IdentityUser> _userManager;
-        private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
-         
-        public AuthController(UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration)
+
+        public AuthController(UserManager<IdentityUser> userManager, IConfiguration configuration)
         {
             _userManager = userManager;
-            _roleManager = roleManager;
             _configuration = configuration;
         }
 
-        [AllowAnonymous] // <-- ADD THIS ATTRIBUTE
+        [AllowAnonymous]
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest model)
         {
             var userExists = await _userManager.FindByEmailAsync(model.Email);
-            if (userExists != null)
-            {
-                return BadRequest(new { Message = "User already exists!" });
-            }
+            if (userExists != null) return BadRequest(new { Message = "User already exists!" });
 
             var user = new IdentityUser { UserName = model.Email, Email = model.Email };
             var result = await _userManager.CreateAsync(user, model.Password);
 
-            if (!result.Succeeded)
-            {
-                return BadRequest(new { Message = "User creation failed!", Errors = result.Errors });
-            }
+            if (!result.Succeeded) return BadRequest(new { Message = "User creation failed!", Errors = result.Errors });
 
             await _userManager.AddToRoleAsync(user, "User");
-
             return Ok(new { Message = "User created successfully!" });
         }
 
-        [AllowAnonymous] 
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest model)
         {
@@ -57,20 +47,18 @@ namespace Task.Api.Controllers
             {
                 var userRoles = await _userManager.GetRolesAsync(user);
                 var token = GenerateJwtToken(user, userRoles);
+
                 return Ok(new LoginResult { Success = true, Token = token });
             }
-
             return Unauthorized(new LoginResult { Success = false, Message = "Invalid email or password." });
         }
 
-        
         private string GenerateJwtToken(IdentityUser user, IList<string> roles)
         {
-            
             var claims = new List<Claim>
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-                new Claim(JwtRegisteredClaimNames.Email, user.Email!),
+                new Claim("email", user.Email!),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             };
 
@@ -81,7 +69,7 @@ namespace Task.Api.Controllers
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Secret"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var expires = DateTime.Now.AddMinutes(Convert.ToDouble(_configuration["Jwt:ExpiresInMinutes"]));
+            var expires = DateTime.UtcNow.AddMinutes(Convert.ToDouble(_configuration["Jwt:ExpiresInMinutes"]));
 
             var token = new JwtSecurityToken(
                 issuer: _configuration["Jwt:Issuer"],

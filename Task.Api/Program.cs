@@ -52,7 +52,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 app.UseHttpsRedirection();
 
 app.UseCors("AllowBlazorApp"); // Enable CORS
@@ -62,7 +61,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Seed database with roles and admin user
+
 
 
 app.Run();
