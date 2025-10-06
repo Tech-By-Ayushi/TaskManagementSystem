@@ -1,104 +1,151 @@
 ﻿@page "/tasks"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @using Microsoft.AspNetCore.Authorization
+@using Task.Client.Pages
 @using Task.Client.Services
 @using Task.Shared
-@inject TaskService TaskService
+@inject IJSRuntime JSRuntime
+@inject TaskState TaskState
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
 
-<PageTitle>Tasks Dashboard</PageTitle>
+<PageTitle>Drag Board</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Tasks Dashboard</MudText>
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudText Typo="Typo.h4">Tasks Board</MudText>
+    <AuthorizeView Roles="Admin">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/add-task">Add New Task</MudButton>
+    </AuthorizeView>
+</div>
 
-<AuthorizeView Roles="Admin">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/add-task" Class="mb-4">Add New Task</MudButton>
-</AuthorizeView>
-
-@if (_tasks == null)
+@if (_user == null)
 {
     <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
 }
 else
 {
-    <MudTable T="TaskItemDto" Items="_tasks" Hover="true" Breakpoint="Breakpoint.Sm">
-        <HeaderContent>
-            <MudTh>Title</MudTh>
-            <MudTh>Description</MudTh>
-            <MudTh>Assigned To</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh>Due Date</MudTh>
-            <AuthorizeView Roles="Admin">
-                <MudTh>Actions</MudTh>
-            </AuthorizeView>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="Title">@context.Title</MudTd>
-            <MudTd DataLabel="Description">@context.Description</MudTd>
-            <MudTd DataLabel="Assigned To">@context.CreatedByEmail</MudTd>
-            <MudTd DataLabel="Status">
-                <MudSelect T="Shared.TaskStatus" Value="context.Status" ValueChanged="(s) => OnStatusChanged(context, s)">
-                    @foreach (Shared.TaskStatus status in Enum.GetValues(typeof(Shared.TaskStatus)))
-                    {
-                        <MudSelectItem Value="status">@status.ToString()</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudTd>
-            <MudTd DataLabel="Due Date">@context.DueDate?.ToShortDateString()</MudTd>
-            <AuthorizeView Roles="Admin" Context="authContext">
-                <MudTd DataLabel="Actions">
-                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                        <MudMenuItem Href="@($"edit-task/{context.Id}")">Edit</MudMenuItem>
-                        <MudMenuItem OnClick="() => DeleteTask(context.Id)" Disabled="@_deletingTasks.Contains(context.Id)">Delete</MudMenuItem>
-                    </MudMenu>
-                </MudTd>
-            </AuthorizeView>
-        </RowTemplate>
-        <PagerContent>
-            <MudTablePager />
-        </PagerContent>
-    </MudTable>
+    <MudGrid Spacing="3" Class="drag-board-grid">
+        @foreach (var status in _workflowStatuses)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <div class="drag-column">
+                    <MudText Typo="Typo.h6" Class="drag-column-header">@status.ToString()</MudText>
+                    <div class="dropzone" data-status="@status">
+                        @foreach (var task in TaskState.Tasks.Where(t => t.Status == status))
+                        {
+                            var isOwner = _user.Identity?.Name == task.CreatedByEmail;
+                            var isAdmin = _user.IsInRole("Admin");
+
+                            if (isOwner || isAdmin)
+                            {
+                                <div class="drag-card" data-task-id="@task.Id">
+                                    <MudCard Elevation="2">
+                                        <MudCardHeader>
+                                            <CardHeaderContent>
+                                                <MudText Typo="Typo.subtitle1">@task.Title</MudText>
+                                            </CardHeaderContent>
+                                            <CardHeaderActions>
+                                                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Dense="true" Size="Size.Small" AnchorOrigin="Origin.BottomRight">
+                                                    <MudMenuItem OnClick="() => ShowTaskDetails(task)">View Details</MudMenuItem>
+                                                    <AuthorizeView Roles="Admin">
+                                                        <MudMenuItem Href="@($"edit-task/{task.Id}")">Edit</MudMenuItem>
+                                                        <MudMenuItem OnClick="() => DeleteTask(task.Id)" Disabled="@_deletingTasks.Contains(task.Id)">Delete</MudMenuItem>
+                                                    </AuthorizeView>
+                                                </MudMenu>
+                                            </CardHeaderActions>
+                                        </MudCardHeader>
+                                        <MudCardContent>
+                                            <MudText Typo="Typo.body2" Class="truncate-text">@task.Description</MudText>
+                                            <MudText Typo="Typo.caption" Class="mt-2">Due: @task.DueDate?.ToShortDateString()</MudText>
+                                        </MudCardContent>
+                                    </MudCard>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </MudItem>
+        }
+    </MudGrid>
 }
 
 @code {
-    private List<TaskItemDto>? _tasks;
+    private readonly Shared.TaskStatus[] _workflowStatuses = (Shared.TaskStatus[])Enum.GetValues(typeof(Shared.TaskStatus));
+    private DotNetObjectReference<Tasks>? _dotNetHelper;
     private HashSet<Guid> _deletingTasks = new();
+    private System.Security.Claims.ClaimsPrincipal? _user;
+    private bool _jsInitialized = false; // Flag to ensure JS is only initialized once
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadTasks();
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _user = authState.User;
+
+        TaskState.OnChange += StateHasChanged;
+        if (TaskState.Tasks.Count == 0)
+        {
+            await TaskState.InitializeTasksAsync();
+        }
     }
 
-    private async Task LoadTasks()
+    // This updated method fixes the timing issue
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        _tasks = await TaskService.GetTasksAsync();
+        // Check if the board is ready and if our JS script hasn't been run yet
+        if (!_jsInitialized && _user != null && TaskState.Tasks.Any())
+        {
+            _jsInitialized = true; // Mark as initialized
+            _dotNetHelper = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("initializeDragBoard", _dotNetHelper);
+        }
     }
 
-    private async Task OnStatusChanged(TaskItemDto task, Shared.TaskStatus newStatus)
+    private void ShowTaskDetails(TaskItemDto task)
     {
+        var parameters = new DialogParameters { ["Task"] = task };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TaskDetailDialog>(task.Title, parameters, options);
+    }
+
+    [JSInvokable]
+    public async Task OnTaskDropped(string taskId, string newStatusStr)
+    {
+        var task = TaskState.Tasks.FirstOrDefault(t => t.Id.ToString() == taskId);
+        if (task == null || !Enum.TryParse<Shared.TaskStatus>(newStatusStr, out var newStatus) || task.Status == newStatus) return;
+
+        var isOwner = _user.Identity?.Name == task.CreatedByEmail;
+        var isAdmin = _user.IsInRole("Admin");
+
+        if (!isOwner && !isAdmin)
+        {
+            Snackbar.Add("You can only move your own tasks.", Severity.Error);
+            return;
+        }
+
         try
         {
-            await TaskService.UpdateTaskStatusAsync(task.Id, newStatus);
+            // Optimistically update the UI first for a smoother experience
+            var oldStatus = task.Status;
             task.Status = newStatus;
-            Snackbar.Add("Status updated successfully!", Severity.Success);
+            StateHasChanged();
+
+            await TaskState.UpdateTaskStatusAsync(task.Id, newStatus);
+            Snackbar.Add($"Task '{task.Title}' moved to {newStatus}", Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error updating status: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error moving task: {ex.Message}", Severity.Error);
         }
     }
 
     private async Task DeleteTask(Guid taskId)
     {
         _deletingTasks.Add(taskId);
-
         try
         {
-            await TaskService.DeleteTaskAsync(taskId);
-            var taskToRemove = _tasks?.FirstOrDefault(t => t.Id == taskId);
-            if (taskToRemove != null)
-            {
-                _tasks.Remove(taskToRemove);
-            }
+            await TaskState.DeleteTaskAsync(taskId);
             Snackbar.Add("Task deleted successfully!", Severity.Success);
         }
         catch (Exception ex)
@@ -108,7 +155,15 @@ else
         finally
         {
             _deletingTasks.Remove(taskId);
-            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        TaskState.OnChange -= StateHasChanged;
+        if (_dotNetHelper != null)
+        {
+            _dotNetHelper.Dispose();
         }
     }
 }

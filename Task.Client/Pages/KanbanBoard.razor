@@ -1,0 +1,115 @@
+﻿@page "/board"
+@using Microsoft.AspNetCore.Authorization
+@using Task.Shared
+@using Task.Client.Services
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+@inject TaskState TaskState
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Kanban Board</PageTitle>
+<MudText Typo="Typo.h4" GutterBottom="true">Kanban Board</MudText>
+
+@if (TaskState.Tasks == null)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid Spacing="3">
+        @foreach (var status in _workflowStatuses)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="2">
+                <div class="kanban-column">
+                    <MudText Typo="Typo.h6" Class="kanban-column-header">@status.ToString()</MudText>
+
+                    @* The data-status attribute is read by the JavaScript *@
+                    <div class="dropzone" data-status="@status">
+                        @{
+                            var tasksInColumn = TaskState.Tasks.Where(t => t.Status == status).ToList();
+                        }
+                        @foreach (var task in tasksInColumn)
+                        {
+                            @* The data-task-id attribute is read by the JavaScript *@
+                            <div class="kanban-card" data-task-id="@task.Id">
+                                <MudCard>
+                                    <MudCardHeader><CardHeaderContent><MudText Typo="Typo.subtitle1">@task.Title</MudText></CardHeaderContent></MudCardHeader>
+                                    <MudCardContent>
+                                        <MudText Typo="Typo.body2">@task.Description</MudText>
+                                        <MudText Typo="Typo.caption" Class="mt-2">Due: @task.DueDate?.ToShortDateString()</MudText>
+                                        <MudText Typo="Typo.caption">Assigned: @task.CreatedByEmail</MudText>
+                                    </MudCardContent>
+                                </MudCard>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private readonly Shared.TaskStatus[] _workflowStatuses = (Shared.TaskStatus[])Enum.GetValues(typeof(Shared.TaskStatus));
+    private DotNetObjectReference<KanbanBoard>? _dotNetHelper;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TaskState.OnChange += StateHasChanged;
+        if (TaskState.Tasks.Count == 0)
+        {
+            await TaskState.InitializeTasksAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Create a reference to this component instance to pass to JavaScript
+            _dotNetHelper = DotNetObjectReference.Create(this);
+            // Call the JavaScript function to initialize the drag-and-drop
+            await JSRuntime.InvokeVoidAsync("initializeKanban", _dotNetHelper);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnTaskDropped(string taskId, string newStatusStr)
+    {
+        var task = TaskState.Tasks.FirstOrDefault(t => t.Id.ToString() == taskId);
+        var newStatus = Enum.Parse<Shared.TaskStatus>(newStatusStr);
+
+        if (task == null || task.Status == newStatus) return;
+
+        // --- Authorization Check ---
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        bool isOwner = user.Identity?.Name == task.CreatedByEmail;
+        bool isAdmin = user.IsInRole("Admin");
+
+        if (!isOwner && !isAdmin)
+        {
+            Snackbar.Add("You can only move your own tasks.", Severity.Error);
+            return; // Deny the move
+        }
+        // --- End Authorization Check ---
+
+        try
+        {
+            await TaskState.UpdateTaskStatusAsync(task.Id, newStatus);
+            Snackbar.Add($"Task '{task.Title}' moved to {newStatus}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error moving task: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        TaskState.OnChange -= StateHasChanged;
+        _dotNetHelper?.Dispose();
+    }
+}

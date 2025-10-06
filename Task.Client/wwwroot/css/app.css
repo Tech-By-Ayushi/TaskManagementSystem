@@ -112,3 +112,41 @@ code {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+/* File: wwwroot/css/app.css */
+
+/* === Drag Board Styles === */
+
+.drag-board-grid {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+
+.drag-column {
+    background-color: #f4f4f4;
+    border-radius: 8px;
+    padding: 8px;
+    height: 100%;
+}
+
+.drag-column-header {
+    padding: 8px;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: 2px solid #e0e0e0;
+    margin-bottom: 16px;
+}
+
+.drag-column .dropzone {
+    min-height: 60vh;
+    padding-bottom: 20px;
+}
+
+.drag-card {
+    margin-bottom: 12px;
+    cursor: grab;
+    user-select: none;
+}
+
+    .drag-card:active {
+        cursor: grabbing;
+    }

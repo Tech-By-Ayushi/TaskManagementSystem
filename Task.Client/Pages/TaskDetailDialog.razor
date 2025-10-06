@@ -1,0 +1,40 @@
+﻿@using Task.Shared
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <MudText Typo="Typo.h6">@Task.Title</MudText>
+                <MudDivider Class="my-2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudText>@Task.Description</MudText>
+            </MudItem>
+            <MudItem xs="6">
+                <MudText Typo="Typo.caption">Assigned To:</MudText>
+                <MudText>@Task.CreatedByEmail</MudText>
+            </MudItem>
+            <MudItem xs="6">
+                <MudText Typo="Typo.caption">Due Date:</MudText>
+                <MudText>@Task.DueDate?.ToShortDateString()</MudText>
+            </MudItem>
+            <MudItem xs="6">
+                <MudText Typo="Typo.caption">Status:</MudText>
+                <MudChip T="string" Color="Color.Primary">@Task.Status.ToString()</MudChip>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => DialogInstance.Close()">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    public IMudDialogInstance DialogInstance { get; set; } = default!;
+
+
+    [Parameter]
+    public TaskItemDto Task { get; set; } = default!;
+}
